@@ -1,7 +1,9 @@
 // ===== Main app =====
 
-const STORAGE_KEY = 'ternium_optimizer_v1';
+const STORAGE_KEY = 'ternium_optimizer_v2';
 const STRAT_LBL = { best: 'Best loads', altura: 'Altura', peso: 'Peso', balanceada: 'Balanceada', antiguedad: 'Antigüedad' };
+
+const CONSTRAINTS_DEFAULT = { H_MAX: 5200, W_MAX: 180000, N_MAX: 5, N_MIN: 2, SPACER: 80, CAL_P1_MAX: 25, MAX_ANTIG: 30 };
 
 const state = {
   rolls: [],
@@ -21,7 +23,8 @@ const state = {
   strategy: 'best',
   enforceLAV: true,
   enforceCalibreP1: true,
-  activeTab: 'constructor'
+  activeTab: 'constructor',
+  deletedMats: new Set()  // rollos eliminados permanentemente
 };
 
 // ===== Storage =====
@@ -32,9 +35,11 @@ function saveState() {
         id: c.id, mats: c.rolls.map(r => r.mat), strategy: c.strategy, lambda: c.lambda
       })),
       excludedMats: state.rolls.filter(r => r.excluded).map(r => r.mat),
+      deletedMats: [...state.deletedMats],
       lambda: state.lambda, topN: state.topN, mode: state.mode, strategy: state.strategy,
       enforceLAV: state.enforceLAV, enforceCalibreP1: state.enforceCalibreP1,
-      fileName: state.fileName
+      fileName: state.fileName,
+      constraints: { ...optimizer.CONSTRAINTS }
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch (e) { console.warn('No se pudo guardar estado:', e); }
@@ -56,6 +61,22 @@ function restorePreferences(saved) {
   if (saved.strategy) state.strategy = saved.strategy;
   if (saved.enforceLAV != null) state.enforceLAV = saved.enforceLAV;
   if (saved.enforceCalibreP1 != null) state.enforceCalibreP1 = saved.enforceCalibreP1;
+  if (saved.constraints) {
+    optimizer.updateConstraints(saved.constraints);
+    syncConstraintInputs();
+  }
+}
+
+function syncConstraintInputs() {
+  const C = optimizer.CONSTRAINTS;
+  const el = id => document.getElementById(id);
+  if (el('c-hmax')) el('c-hmax').value = C.H_MAX;
+  if (el('c-wmax')) el('c-wmax').value = C.W_MAX;
+  if (el('c-nmax')) el('c-nmax').value = C.N_MAX;
+  if (el('c-nmin')) el('c-nmin').value = C.N_MIN;
+  if (el('c-spacer')) el('c-spacer').value = C.SPACER;
+  if (el('c-calp1')) el('c-calp1').value = C.CAL_P1_MAX;
+  if (el('c-maxantig')) el('c-maxantig').value = C.MAX_ANTIG;
 }
 
 function restoreFromInventory(saved) {
@@ -63,6 +84,8 @@ function restoreFromInventory(saved) {
   // Restore excluded
   const excludedSet = new Set(saved.excludedMats || []);
   state.rolls.forEach(r => { if (excludedSet.has(r.mat)) r.excluded = true; });
+  // Restore deleted
+  (saved.deletedMats || []).forEach(m => state.deletedMats.add(m));
   // Restore confirmed (only if all mats still exist)
   (saved.confirmed || []).forEach(savedCarga => {
     const rolls = savedCarga.mats.map(m => state.byMat[m]).filter(Boolean);
@@ -85,7 +108,16 @@ function restoreFromInventory(saved) {
 
 // ===== Inventory management =====
 function availableRolls() {
-  return state.rolls.filter(r => !state.confirmedMats.has(r.mat) && !r.excluded);
+  return state.rolls.filter(r => !state.confirmedMats.has(r.mat) && !r.excluded && !state.deletedMats.has(r.mat));
+}
+
+// Elimina un rollo permanentemente del inventario (sesión actual)
+function deleteRoll(mat) {
+  if (!confirm(`¿Eliminar el rollo ${mat} del inventario?\nEsto lo quita de todas las sugerencias en esta sesión.`)) return;
+  state.deletedMats.add(mat);
+  state.selected.delete(mat);
+  saveState();
+  renderAll();
 }
 function currentByStack() { return optimizer.buildByStack(availableRolls()); }
 
@@ -349,16 +381,21 @@ function renderSuggestions() {
     const mats = c.rolls.map(r => viz.fmtLocShort(r)).join(' · ');
     const reuse = (state.mode === 'ranked' && c._reused > 0) ? `<span class="reused">↻${c._reused}</span>` : '';
     const matsJson = JSON.stringify(c.rolls.map(r => r.mat));
-    return `<div class="sg-row">
+    // Botones eliminar por rollo dentro de la sugerencia
+    const deleteButtons = c.rolls.map(r =>
+      `<button class="danger" style="font-size:9.5px;padding:2px 5px" title="Eliminar ${r.mat}" onclick='window._app.deleteRoll("${r.mat}")'>${r.mat.slice(-6)} ✕</button>`
+    ).join('');
+    return `<div class="sg-row" style="grid-template-columns:38px 50px 1fr 70px 60px 50px auto">
       <span class="rank">#${i+1}${reuse}</span>
       <span class="prac" style="background:${pc.bg};color:${pc.fg}">P${c.practica}</span>
       <span class="mats" title="${mats}">${mats}</span>
       <span class="stats">h ${(c.hEff*100).toFixed(0)}% · w ${(c.wEff*100).toFixed(0)}%</span>
       <span class="crane-pill">⚙ ${c.cc.total}</span>
       <span class="score">${c.score.toFixed(3)}</span>
-      <div class="actions">
+      <div class="actions" style="flex-wrap:wrap;gap:3px">
         <button onclick='window._app.previewCombo(${matsJson})'>Ver</button>
         <button class="success" onclick='window._app.confirmFromSuggestion(${matsJson})'>Cargar</button>
+        ${deleteButtons}
       </div></div>`;
   }).join('');
 }
@@ -573,45 +610,4 @@ function init() {
     if (document.getElementById('suggest').style.display !== 'none') renderSuggestions();
   };
   document.getElementById('opt-lav').onchange = (e) => { state.enforceLAV = e.target.checked; saveState(); renderAll(); };
-  document.getElementById('opt-cal').onchange = (e) => { state.enforceCalibreP1 = e.target.checked; saveState(); renderAll(); };
-  document.getElementById('btn-sugg').onclick = renderSuggestions;
-  document.getElementById('btn-export').onclick = exportResults;
-
-  // Tabs
-  document.querySelectorAll('.tab').forEach(t => {
-    t.onclick = () => {
-      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(x => x.classList.remove('active'));
-      t.classList.add('active');
-      document.querySelector(`.tab-content[data-tab="${t.dataset.tab}"]`).classList.add('active');
-      state.activeTab = t.dataset.tab;
-      if (state.activeTab === 'comparador') renderComparador();
-      if (state.activeTab === 'estadisticas') renderEstadisticas();
-    };
-  });
-
-  // Modal
-  document.getElementById('modal-bg').onclick = (e) => { if (e.target.id === 'modal-bg') closeModal(); };
-  document.querySelector('.modal-close').onclick = closeModal;
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
-
-  // Right-click on slot → toggle excluded
-  document.addEventListener('contextmenu', (e) => {
-    const el = e.target.closest('[data-mat]');
-    if (!el) return;
-    e.preventDefault();
-    toggleExcluded(el.dataset.mat);
-  });
-
-  document.getElementById('btn-undo-all').onclick = undoAll;
-}
-
-window._app = {
-  confirmCurrent, confirmFromSuggestion, undoConfirmed, undoAll,
-  clearSelection: () => { state.selected.clear(); renderAll(); },
-  previewCombo: (mats) => { state.selected.clear(); mats.forEach(m => state.selected.add(m)); renderAll(); document.getElementById('cuadro').scrollIntoView({ behavior: 'smooth', block: 'center' }); },
-  showDetails, closeModal, applyStrategy, showConflictsModal,
-  state
-};
-
-init();
+  document.getElementById('opt-cal').onchange = (e) => { state.enforceCalibreP1 = e.target.checked; save

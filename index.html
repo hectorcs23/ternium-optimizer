@@ -39,7 +39,7 @@
   <!-- Info: nivel auto-asignado -->
   <div class="banner info">
     <span class="icon">ℹ</span>
-    <span>Línea 1–40 y A–G: niveles S/C/A auto-asignados por antigüedad (más viejo = base A). Borde punteado azul los marca. Click derecho sobre un rollo para excluirlo (rollo dañado).</span>
+    <span>Línea 1–40 y A–G: niveles S/C/A auto-asignados por antigüedad (más viejo = base A). Borde punteado azul los marca. <strong>Click derecho</strong> sobre un rollo para excluirlo/incluirlo. En sugerencias: botón <strong>Eliminar</strong> quita el rollo del inventario permanentemente.</span>
   </div>
 
   <!-- Confirmed loads -->
@@ -80,68 +80,38 @@
       </select></div>
       <div class="ctrl-grp"><label><input type="checkbox" id="opt-lav" checked> No mezclar LAV</label></div>
       <div class="ctrl-grp"><label><input type="checkbox" id="opt-cal" checked> Calibre P1 ≤ 25</label></div>
-      <button id="btn-sugg" class="primary" style="margin-left:auto">Sugerir cargas</button>
+      <button id="btn-constraints" style="margin-left:auto">⚙ Restricciones</button>
+      <button id="btn-sugg" class="primary">▶ Sugerir cargas</button>
     </div>
 
-    <!-- Legend -->
-    <div class="legend" id="legend"></div>
-
-    <!-- Main layout -->
-    <div class="main">
-      <div class="zone-card">
-        <div class="zone-title">LÍNEA 1–40 + A–G</div>
-        <div id="linea"></div>
-      </div>
-      <div class="zone-card">
-        <div class="zone-title">CUADRO 46–54</div>
-        <div id="cuadro"></div>
-      </div>
-      <div class="panel" id="panel"></div>
-    </div>
-
-    <!-- Suggestions -->
-    <div class="suggest" id="suggest" style="display:none">
-      <div class="sg-h">
-        <h3 id="sg-title">Top cargas</h3>
-        <span style="font-size:11px;color:var(--text-tertiary)" id="sg-meta"></span>
-      </div>
-      <div class="sg-list" id="sg-list"></div>
-      <div class="fmla" id="fmla"></div>
-    </div>
-  </div>
-
-  <!-- Tab: Comparador -->
-  <div class="tab-content" data-tab="comparador">
-    <div id="comparador-content">
-      <div style="padding:40px;text-align:center;color:var(--text-tertiary)">Carga un Excel primero.</div>
-    </div>
-  </div>
-
-  <!-- Tab: Estadísticas -->
-  <div class="tab-content" data-tab="estadisticas">
-    <div id="stats-content"></div>
-  </div>
-
-</div>
-
-<!-- Tooltip -->
-<div class="tt" id="tt"></div>
-
-<!-- Modal -->
-<div class="modal-bg" id="modal-bg">
-  <div class="modal">
-    <button class="modal-close">×</button>
-    <div id="modal-body"></div>
-  </div>
-</div>
-
-<!-- SheetJS via CDN (~900 KB) -->
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script src="js/parsers.js"></script>
-<script src="js/optimizer.js"></script>
-<script src="js/visualization.js"></script>
-<script src="js/exporter.js"></script>
-<script src="js/app.js"></script>
-
-</body>
-</html>
+    <!-- Panel de restricciones (oculto por defecto) -->
+    <div class="constraints-panel" id="constraints-panel" style="display:none">
+      <h4>Restricciones del horno campana <button id="btn-constraints-close">✕ Cerrar</button></h4>
+      <div class="constraints-grid">
+        <div class="constraint-field">
+          <label>Altura máxima (mm)</label>
+          <input type="number" id="c-hmax" value="5200" min="1000" max="10000" step="100">
+          <span class="hint">Default: 5200 mm</span>
+        </div>
+        <div class="constraint-field">
+          <label>Peso máximo (kg)</label>
+          <input type="number" id="c-wmax" value="180000" min="10000" max="500000" step="1000">
+          <span class="hint">Default: 180,000 kg (180 t)</span>
+        </div>
+        <div class="constraint-field">
+          <label>Máx. rollos por carga</label>
+          <input type="number" id="c-nmax" value="5" min="2" max="10" step="1">
+          <span class="hint">Default: 5 rollos</span>
+        </div>
+        <div class="constraint-field">
+          <label>Mín. rollos por carga</label>
+          <input type="number" id="c-nmin" value="2" min="1" max="5" step="1">
+          <span class="hint">Default: 2 rollos</span>
+        </div>
+        <div class="constraint-field">
+          <label>Separador entre rollos (mm)</label>
+          <input type="number" id="c-spacer" value="80" min="0" max="500" step="10">
+          <span class="hint">Default: 80 mm</span>
+        </div>
+        <div class="constraint-field">
+          <la

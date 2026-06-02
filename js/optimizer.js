@@ -1,5 +1,6 @@
 // ===== Core optimizer =====
 
+// Restricciones modificables en tiempo de ejecución
 const CONSTRAINTS = {
   H_MAX: 5200,        // mm
   W_MAX: 180000,      // kg
@@ -10,9 +11,35 @@ const CONSTRAINTS = {
   MAX_ANTIG: 30       // días para normalizar score antigüedad
 };
 
+// Permite actualizar restricciones desde la UI
+function updateConstraints(newVals) {
+  Object.assign(CONSTRAINTS, newVals);
+}
+
 const ABOVE = { s: [], c: ['s'], a: ['c', 's'] };
 
 function buildByStack(pool) {
+  const bs = {};
+  // Detectar conflictos primero (varios rollos misma posición+nivel)
+  const posCounts = {};
+  pool.forEach(r => {
+    const k = `${r.fila}${r.col}|${r.nivel}`;
+    posCounts[k] = (posCounts[k] || 0) + 1;
+  });
+  pool.forEach(r => {
+    const posKey = `${r.fila}${r.col}|${r.nivel}`;
+    // Si hay conflicto en esta posición, usar ID único de rollo como clave de estiba
+    // para que cada rollo en conflicto pueda ser combinado libremente
+    const k = posCounts[posKey] > 1 ? `${r.fila}${r.col}_${r.mat}` : `${r.fila}${r.col}`;
+    if (!bs[k]) bs[k] = {};
+    if (!bs[k][r.nivel]) bs[k][r.nivel] = [];
+    bs[k][r.nivel].push(r);
+  });
+  return bs;
+}
+
+// buildByStack original sin desambiguación, usado solo para detectar conflictos
+function buildByStackRaw(pool) {
   const bs = {};
   pool.forEach(r => {
     const k = `${r.fila}${r.col}`;
@@ -24,7 +51,7 @@ function buildByStack(pool) {
 }
 
 function detectConflicts(rolls) {
-  const bs = buildByStack(rolls);
+  const bs = buildByStackRaw(rolls);
   const conflicts = [];
   Object.entries(bs).forEach(([stk, levels]) => {
     Object.entries(levels).forEach(([nv, group]) => {
@@ -169,33 +196,4 @@ function compareStrategies(pool, lambda, topN, opts) {
     const avgHFill = picks.length > 0 ? picks.reduce((sum, p) => sum + p.hEff, 0) / picks.length : 0;
     const avgWFill = picks.length > 0 ? picks.reduce((sum, p) => sum + p.wEff, 0) / picks.length : 0;
     const avgAntig = totalRollos > 0
-      ? picks.reduce((s, p) => s + p.rolls.reduce((s2, r) => s2 + r.antig, 0), 0) / totalRollos
-      : 0;
-    results[s] = {
-      strategy: s,
-      n_cargas: picks.length,
-      n_rollos: totalRollos,
-      peso_total: totalPeso,
-      crane_total: totalCrane,
-      avg_h_fill: avgHFill,
-      avg_w_fill: avgWFill,
-      avg_antig: avgAntig,
-      picks
-    };
-  });
-  // Determine winner by composite (more rollos used + higher fills, less crane)
-  const scores = {};
-  Object.entries(results).forEach(([k, r]) => {
-    scores[k] = 0.4 * (r.n_rollos / pool.length)
-              + 0.3 * r.avg_h_fill
-              + 0.2 * r.avg_w_fill
-              - 0.1 * (r.crane_total / Math.max(1, r.n_cargas) / 10);
-  });
-  const winner = Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0];
-  return { results, winner, scores };
-}
-
-window.optimizer = {
-  CONSTRAINTS, buildByStack, detectConflicts, craneCost, loadFeasibility, isFeasible,
-  strategyScore, suggestRanked, suggestDisjoint, compareStrategies, enumerateCandidates
-};
+      ? picks.reduce((s, p) => s + p.rolls.reduce((s2, 
